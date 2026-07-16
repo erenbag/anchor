@@ -1,0 +1,353 @@
+/*
+ * Anchor — Halka & Hover Kartı Stilleri
+ * Premium glassmorphism tasarım, dinamik renk animasyonları
+ */
+
+/* ═══════════════════════════════════════════════════════════════
+   GOOGLE FONTS — Inter (modern, okunabilir)
+   ═══════════════════════════════════════════════════════════════ */
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap");
+
+/* ═══════════════════════════════════════════════════════════════
+   RENK DEĞİŞKENLERİ
+   ═══════════════════════════════════════════════════════════════ */
+:root {
+  --anchor-green: #22c55e;
+  --anchor-green-glow: rgba(34, 197, 94, 0.4);
+  --anchor-yellow: #eab308;
+  --anchor-yellow-glow: rgba(234, 179, 8, 0.4);
+  --anchor-orange: #f97316;
+  --anchor-orange-glow: rgba(249, 115, 22, 0.4);
+  --anchor-red: #ef4444;
+  --anchor-red-glow: rgba(239, 68, 68, 0.4);
+  --anchor-loading: #94a3b8;
+  --anchor-card-bg: rgba(15, 15, 20, 0.88);
+  --anchor-card-border: rgba(255, 255, 255, 0.08);
+  --anchor-text-primary: #f1f5f9;
+  --anchor-text-secondary: #94a3b8;
+  --anchor-text-muted: #64748b;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   ANCHOR HALKASI (RING) — Ana Element
+   ═══════════════════════════════════════════════════════════════ */
+.anchor-ring-container {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 36px;
+  height: 36px;
+  z-index: 9999;
+  cursor: pointer;
+  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+  filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.3));
+}
+
+.anchor-ring-container:hover {
+  transform: scale(1.15);
+}
+
+/* Thumbnail üzerindeki küçük halka */
+.anchor-ring-thumbnail {
+  width: 28px;
+  height: 28px;
+  top: 6px;
+  right: 6px;
+}
+
+/* ── SVG Halka ──────────────────────────────────────────────── */
+.anchor-ring-svg {
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+}
+
+.anchor-ring-bg {
+  stroke: rgba(255, 255, 255, 0.12);
+}
+
+.anchor-ring-progress {
+  stroke-linecap: round;
+  transition: stroke-dashoffset 1.2s cubic-bezier(0.4, 0, 0.2, 1),
+    stroke 0.6s ease;
+}
+
+/* ── Anchor İkon (⚓) ───────────────────────────────────────── */
+.anchor-ring-icon {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 14px;
+  line-height: 1;
+  pointer-events: none;
+}
+
+.anchor-ring-thumbnail .anchor-ring-icon {
+  font-size: 11px;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   RENK DURUMLARI
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ── Loading ────────────────────────────────────────────────── */
+[data-status="loading"] .anchor-ring-progress {
+  stroke: var(--anchor-loading);
+  animation: anchor-spin 1.5s linear infinite;
+}
+
+[data-status="loading"] .anchor-ring-bg {
+  stroke: rgba(148, 163, 184, 0.2);
+}
+
+@keyframes anchor-spin {
+  0% {
+    stroke-dashoffset: 100.53;
+  }
+  50% {
+    stroke-dashoffset: 25;
+  }
+  100% {
+    stroke-dashoffset: 100.53;
+  }
+}
+
+/* ── Idle (henüz analiz edilmemiş) ──────────────────────────── */
+[data-status="idle"] .anchor-ring-progress {
+  stroke: var(--anchor-loading);
+  stroke-dashoffset: 100.53;
+  opacity: 0.5;
+}
+
+/* ── Green (Dürüst) ─────────────────────────────────────────── */
+[data-status="green"] .anchor-ring-progress {
+  stroke: var(--anchor-green);
+}
+
+[data-status="green"] {
+  filter: drop-shadow(0 0 8px var(--anchor-green-glow));
+}
+
+/* ── Yellow (Hafif Abartı) ──────────────────────────────────── */
+[data-status="yellow"] .anchor-ring-progress {
+  stroke: var(--anchor-yellow);
+}
+
+[data-status="yellow"] {
+  filter: drop-shadow(0 0 8px var(--anchor-yellow-glow));
+}
+
+/* ── Orange (Yanıltıcı) ─────────────────────────────────────── */
+[data-status="orange"] .anchor-ring-progress {
+  stroke: var(--anchor-orange);
+}
+
+[data-status="orange"] {
+  filter: drop-shadow(0 0 8px var(--anchor-orange-glow));
+}
+
+/* ── Red (Clickbait) ─────────────────────────────────────────── */
+[data-status="red"] .anchor-ring-progress {
+  stroke: var(--anchor-red);
+}
+
+[data-status="red"] {
+  filter: drop-shadow(0 0 8px var(--anchor-red-glow));
+  animation: anchor-pulse-red 2s ease-in-out infinite;
+}
+
+@keyframes anchor-pulse-red {
+  0%,
+  100% {
+    filter: drop-shadow(0 0 8px var(--anchor-red-glow));
+  }
+  50% {
+    filter: drop-shadow(0 0 16px var(--anchor-red-glow));
+  }
+}
+
+/* ── Error ───────────────────────────────────────────────────── */
+[data-status="error"] .anchor-ring-progress {
+  stroke: #475569;
+  stroke-dashoffset: 0;
+}
+
+[data-status="error"] .anchor-ring-icon {
+  content: "⚠️";
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   HOVER KARTI — Glassmorphism Bilgi Kutusu
+   ═══════════════════════════════════════════════════════════════ */
+.anchor-hover-card {
+  position: absolute;
+  top: calc(100% + 12px);
+  right: 0;
+  width: 340px;
+  padding: 0;
+  border-radius: 16px;
+  background: var(--anchor-card-bg);
+  border: 1px solid var(--anchor-card-border);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5),
+    0 0 0 1px rgba(255, 255, 255, 0.05) inset;
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
+  color: var(--anchor-text-primary);
+  z-index: 10000;
+  overflow: hidden;
+
+  /* Giriş animasyonu */
+  opacity: 0;
+  transform: translateY(-8px) scale(0.96);
+  pointer-events: none;
+  transition: opacity 0.25s cubic-bezier(0.16, 1, 0.3, 1),
+    transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Hover'da kartı göster */
+.anchor-ring-container:hover .anchor-hover-card {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
+}
+
+/* ── Kart Başlığı ───────────────────────────────────────────── */
+.anchor-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 18px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.anchor-card-score {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.anchor-score-number {
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -1px;
+}
+
+.anchor-score-label {
+  font-size: 12px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--anchor-text-secondary);
+}
+
+/* Skor renkleri */
+.anchor-card-score[data-color="green"] .anchor-score-number {
+  color: var(--anchor-green);
+}
+.anchor-card-score[data-color="yellow"] .anchor-score-number {
+  color: var(--anchor-yellow);
+}
+.anchor-card-score[data-color="orange"] .anchor-score-number {
+  color: var(--anchor-orange);
+}
+.anchor-card-score[data-color="red"] .anchor-score-number {
+  color: var(--anchor-red);
+}
+
+.anchor-card-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--anchor-text-secondary);
+  letter-spacing: 0.3px;
+}
+
+/* ── Kart Gövdesi ───────────────────────────────────────────── */
+.anchor-card-body {
+  padding: 14px 18px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.anchor-card-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.anchor-card-section-title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--anchor-text-muted);
+}
+
+.anchor-card-text {
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--anchor-text-primary);
+  margin: 0;
+}
+
+/* Dürüst başlık vurgusu */
+.anchor-honest-title {
+  font-style: italic;
+  color: var(--anchor-green);
+  font-weight: 500;
+}
+
+/* Zaman damgası */
+.anchor-timestamp {
+  font-family: "JetBrains Mono", "Fira Code", monospace;
+  font-size: 13px;
+  font-weight: 600;
+  color: #60a5fa;
+  background: rgba(96, 165, 250, 0.1);
+  padding: 4px 8px;
+  border-radius: 6px;
+  display: inline-block;
+  width: fit-content;
+}
+
+/* ── Kart Renk Aksan Çizgisi (üst kenar) ───────────────────── */
+.anchor-hover-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+}
+
+.anchor-hover-card[data-color="green"]::before {
+  background: linear-gradient(90deg, var(--anchor-green), #4ade80);
+}
+.anchor-hover-card[data-color="yellow"]::before {
+  background: linear-gradient(90deg, var(--anchor-yellow), #facc15);
+}
+.anchor-hover-card[data-color="orange"]::before {
+  background: linear-gradient(90deg, var(--anchor-orange), #fb923c);
+}
+.anchor-hover-card[data-color="red"]::before {
+  background: linear-gradient(90deg, var(--anchor-red), #f87171);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   RESPONSIVE — Mobil uyumluluk
+   ═══════════════════════════════════════════════════════════════ */
+@media (max-width: 600px) {
+  .anchor-hover-card {
+    width: 280px;
+    right: -20px;
+  }
+
+  .anchor-score-number {
+    font-size: 22px;
+  }
+}

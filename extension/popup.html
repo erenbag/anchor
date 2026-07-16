@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="tr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Anchor — Clickbait Dedektörü</title>
+    <link rel="stylesheet" href="styles/popup.css" />
+  </head>
+  <body>
+    <div class="popup-container">
+      <!-- Başlık -->
+      <header class="popup-header">
+        <div class="popup-logo">
+          <span class="popup-logo-icon">⚓</span>
+          <h1 class="popup-title">Anchor</h1>
+        </div>
+        <span class="popup-version">v1.0.0</span>
+      </header>
+
+      <!-- Durum Kartı -->
+      <div class="popup-status-card" id="statusCard">
+        <div class="status-indicator" id="statusIndicator">
+          <div class="status-dot" id="statusDot"></div>
+          <span class="status-text" id="statusText">Bağlantı kontrol ediliyor…</span>
+        </div>
+      </div>
+
+      <!-- Mevcut Sayfa Bilgisi -->
+      <div class="popup-current-page" id="currentPage">
+        <div class="page-info">
+          <span class="page-label">Aktif Sayfa</span>
+          <span class="page-url" id="pageUrl">—</span>
+        </div>
+        <div class="page-analysis" id="pageAnalysis" style="display: none">
+          <div class="analysis-score" id="analysisScore">
+            <span class="score-value" id="scoreValue">—</span>
+            <span class="score-label" id="scoreLabel">Analiz bekleniyor</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Hızlı Bilgi -->
+      <div class="popup-info">
+        <div class="info-item">
+          <span class="info-dot green"></span>
+          <span>%0 – %20: Dürüst İçerik</span>
+        </div>
+        <div class="info-item">
+          <span class="info-dot yellow"></span>
+          <span>%21 – %50: Hafif Abartı</span>
+        </div>
+        <div class="info-item">
+          <span class="info-dot orange"></span>
+          <span>%51 – %80: Yanıltıcı</span>
+        </div>
+        <div class="info-item">
+          <span class="info-dot red"></span>
+          <span>%81 – %100: Clickbait</span>
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <footer class="popup-footer">
+        <span>Backend: <code>localhost:8000</code></span>
+      </footer>
+    </div>
+
+    <script src="popup.js"></script>
+  </body>
+</html>
