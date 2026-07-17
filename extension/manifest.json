@@ -1,34 +1,31 @@
 {
   "manifest_version": 3,
   "name": "Anchor — Clickbait Dedektörü",
-  "version": "1.0.0",
-  "description": "Başlık-İçerik uyuşmazlığını tespit eden akıllı clickbait analiz uzantısı.",
-
+  "version": "3.1.0",
+  "description": "Başlık-İçerik uyuşmazlığını tespit eden akıllı clickbait analiz uzantısı (Sadece Haber Siteleri).",
+  
   "permissions": [
     "activeTab",
+    "scripting",
     "storage"
   ],
-
+  
   "host_permissions": [
-    "*://*.youtube.com/*",
-    "http://localhost:8000/*"
+    "<all_urls>"
   ],
-
+  
   "background": {
     "service_worker": "background.js"
   },
-
+  
   "content_scripts": [
     {
-      "matches": [
-        "*://*.youtube.com/*"
-      ],
+      "matches": ["<all_urls>"],
       "js": ["content.js"],
-      "css": ["styles/anchor-ring.css"],
-      "run_at": "document_idle"
+      "css": ["styles/anchor-ring.css"]
     }
   ],
-
+  
   "action": {
     "default_popup": "popup.html",
     "default_icon": {
@@ -37,7 +34,7 @@
       "128": "icons/icon128.png"
     }
   },
-
+  
   "icons": {
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",

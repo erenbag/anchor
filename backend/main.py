@@ -1,20 +1,14 @@
-"""
-Anchor — FastAPI Ana Sunucu
-Tüm analiz pipeline'ını birleştiren ana endpoint.
-"""
-import logging
-import sys
-
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from typing import Optional
+import logging
+import sys
+import asyncio
+from transformers import pipeline
+from concurrent.futures import ThreadPoolExecutor
 
-from config import HOST, PORT
 from analyzer.nli_engine import nli_engine
-from analyzer.chunker import chunk_transcript
-from analyzer.scorer import calculate_score
-from analyzer.sentiment import analyze_comments
-from analyzer.summarizer import generate_honest_title
 
 # ── Logging ──────────────────────────────────────────────────────
 logging.basicConfig(
@@ -24,214 +18,162 @@ logging.basicConfig(
 )
 logger = logging.getLogger("anchor")
 
+# ── Global Model Değişkeni ───────────────────────────────────────
+t5_summarizer = None
+executor = ThreadPoolExecutor(max_workers=1)
+
 # ── FastAPI App ──────────────────────────────────────────────────
 app = FastAPI(
-    title="Anchor — Clickbait Analiz API",
-    description="Başlık-İçerik Uyuşmazlığı Tespit Sistemi",
-    version="1.0.0",
+    title="Anchor — Clickbait Analiz API (Sade ve Hızlı)",
+    description="Sadece Clickbait Skoru ve Dinamik Rapor.",
+    version="3.1.0",
 )
 
-# CORS — Chrome uzantısının localhost'a istek atabilmesi için
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-
-# ── Pydantic Modelleri ───────────────────────────────────────────
-class TranscriptEntry(BaseModel):
-    text: str
-    start: float = 0.0
-    duration: float = 0.0
-
-
 class AnalyzeRequest(BaseModel):
-    platform: str  # "youtube" veya "news"
+    platform: str
     url: str = ""
     title: str
-    content: list[TranscriptEntry] | str  # YouTube: list, Haber: str
-    comments: list[str] = []
-
+    content: str = ""
 
 class AnalyzeResponse(BaseModel):
     clickbait_ratio: float
     status_color: str
-    honest_title_suggestion: str
     contradiction_summary: str
-    user_sentiment_feedback: str
-    verified_timestamp: str | None = None
+    needs_report: bool = False
 
+class GenerateReportRequest(BaseModel):
+    title: str
+    content: str
 
-# ── Startup Event ────────────────────────────────────────────────
+class GenerateReportResponse(BaseModel):
+    contradiction_summary: str
+
 @app.on_event("startup")
 async def startup_event():
-    """Sunucu başladığında NLI modelini önceden yükle."""
-    logger.info("Anchor sunucusu başlatılıyor…")
-    logger.info("NLI modeli ön-yükleniyor (ilk istek hızlı olsun diye)…")
-    nli_engine.load()
-    logger.info("✅ Anchor sunucusu hazır!")
+    global t5_summarizer
+    logger.info("Anchor sunucusu baslatiliyor (v3.0.0)...")
+    try:
+        logger.info("mDeBERTa NLI modeli yukleniyor...")
+        nli_engine.load()
+        logger.info("T5 Ozetleme modeli yukleniyor...")
+        t5_summarizer = pipeline("summarization", model="webis/t5-turkish-summarization", device=-1)
+        logger.info("Tum modeller hazir!")
+    except Exception as e:
+        logger.error(f"Model yukleme sirasinda hata: {e}")
 
-
-# ── Ana Analiz Endpoint'i ────────────────────────────────────────
 @app.post("/api/analyze", response_model=AnalyzeResponse)
 async def analyze(request: AnalyzeRequest):
-    """
-    Başlık-İçerik çelişki analizi yapar.
-
-    YouTube: Zaman damgalı altyazı segmentasyonu + yorum analizi
-    Haber: Başlık vs makale gövdesi NLI analizi
-    """
-    logger.info(
-        "Analiz isteği alındı — Platform: %s | Başlık: %s",
-        request.platform,
-        request.title[:80],
-    )
-
+    logger.info("Aşama 1: Analiz istegi alindi - Haber: %s", request.title)
+    
+    if not request.title or not request.content:
+        return AnalyzeResponse(
+            clickbait_ratio=0.0,
+            status_color="green",
+            contradiction_summary="Başlık veya içerik eksik olduğu için analiz yapılamadı."
+        )
+        
     try:
-        title = request.title
-        platform = request.platform.lower()
-
-        # ── 1. İçerik İşleme ─────────────────────────────────────
-        if platform == "youtube":
-            # YouTube: transcript verisini segmentlere böl
-            transcript_data = [
-                {"text": entry.text, "start": entry.start, "duration": entry.duration}
-                for entry in request.content
-            ]
-            segments = chunk_transcript(transcript_data)
-
-            if not segments:
-                raise HTTPException(
-                    status_code=400,
-                    detail="Altyazı verisi boş veya geçersiz.",
-                )
-
-            # Her segmenti NLI ile analiz et
-            nli_results = nli_engine.analyze_batch(segments, title)
-            # En iyi segmentin metnini özetleme için sakla
-            best_idx = min(
-                range(len(nli_results)),
-                key=lambda i: nli_results[i]["contradiction_score"],
+        from analyzer.scorer import determine_color
+        
+        # 1. Sadece NLI Skoru Hesapla
+        score_result = nli_engine.calculate_clickbait_score(
+            title=request.title,
+            content=request.content
+        )
+        
+        ratio = score_result["clickbait_ratio"]
+        color = determine_color(ratio)
+        
+        # 2. Hızlı Yanıt
+        if ratio < 0.5:
+            return AnalyzeResponse(
+                clickbait_ratio=ratio,
+                status_color=color,
+                contradiction_summary="Başlık içerikle uyumludur.",
+                needs_report=False
             )
-            content_for_summary = segments[best_idx]["text"]
-
-        elif platform == "news":
-            # Haber: tek bir metin bloğu
-            if isinstance(request.content, list):
-                content_text = " ".join(entry.text for entry in request.content)
-            else:
-                content_text = request.content
-
-            if not content_text.strip():
-                raise HTTPException(
-                    status_code=400,
-                    detail="Haber içeriği boş.",
-                )
-
-            # Tek segment olarak NLI analizi
-            nli_result = nli_engine.analyze_nli(
-                premise=content_text, hypothesis=title
-            )
-            nli_results = [
-                {
-                    "start": 0,
-                    "end": 0,
-                    "contradiction_score": nli_result["contradiction_score"],
-                    "entailment_score": nli_result["entailment_score"],
-                }
-            ]
-            content_for_summary = content_text[:2000]
         else:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Geçersiz platform: {platform}. 'youtube' veya 'news' olmalı.",
+            return AnalyzeResponse(
+                clickbait_ratio=ratio,
+                status_color=color,
+                contradiction_summary="Detaylar arka planda analiz ediliyor...",
+                needs_report=True
             )
-
-        # ── 2. Yorum Duygu Analizi ───────────────────────────────
-        comment_sentiment = analyze_comments(request.comments)
-
-        # ── 3. Skor Hesaplama ────────────────────────────────────
-        score_result = calculate_score(
-            nli_results=nli_results,
-            comment_sentiment=comment_sentiment,
-            platform=platform,
-        )
-
-        # ── 4. Gemini ile Dürüst Başlık Üretimi ─────────────────
-        summary_result = generate_honest_title(
-            original_title=title,
-            content_summary=content_for_summary,
-            platform=platform,
-            comments=request.comments if request.comments else None,
-            verified_timestamp=score_result.get("verified_timestamp"),
-        )
-
-        # ── 5. Yanıt ────────────────────────────────────────────
-        response = AnalyzeResponse(
-            clickbait_ratio=score_result["clickbait_ratio"],
-            status_color=score_result["status_color"],
-            honest_title_suggestion=summary_result["honest_title_suggestion"],
-            contradiction_summary=summary_result["contradiction_summary"],
-            user_sentiment_feedback=score_result["user_sentiment_feedback"],
-            verified_timestamp=score_result.get("verified_timestamp"),
-        )
-
-        logger.info(
-            "✅ Analiz tamamlandı — Skor: %.2f | Renk: %s",
-            response.clickbait_ratio,
-            response.status_color,
-        )
-
-        return response
-
-    except HTTPException:
-        raise
+            
     except Exception as e:
-        logger.error("Analiz hatası: %s", e, exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Analiz sırasında hata: {str(e)}")
+        logger.error(f"Analiz sirasinda beklenmeyen hata: {e}")
+        return AnalyzeResponse(
+            clickbait_ratio=0.0,
+            status_color="error",
+            contradiction_summary=f"Analiz sırasında bir hata oluştu: {str(e)}"
+        )
 
+@app.post("/api/generate_report", response_model=GenerateReportResponse)
+async def generate_report(request: GenerateReportRequest):
+    logger.info("Aşama 2: Rapor üretimi basliyor...")
+    
+    import re
+    def get_alternative_sentence(text: str) -> str:
+        sentences = [s.strip() for s in re.split(r'(?<=[a-zğüşöçı])\.\s+', text) if len(s.strip()) > 30]
+        if len(sentences) > 1:
+            keywords = ["neden", "sebep", "işte", "açıkladı", "göre", "iddia", "gerçek", "detay", "olay", "halde"]
+            for s in sentences[1:5]:
+                if any(k in s.lower() for k in keywords):
+                    return s + "."
+            return sentences[1] + "."
+        elif len(sentences) == 1:
+            return sentences[0] + "."
+        return text[:100] + "..."
 
-# ── YouTube Altyazı Çekme Endpoint'i ─────────────────────────────
-@app.get("/api/transcript/{video_id}")
-async def get_transcript(video_id: str):
-    """YouTube video altyazısını çeker (youtube-transcript-api)."""
+    fallback_text = get_alternative_sentence(request.content)
+    final_text = fallback_text
+    
     try:
-        from youtube_transcript_api import YouTubeTranscriptApi
-
-        ytt_api = YouTubeTranscriptApi()
-        transcript_list = ytt_api.fetch(video_id, languages=["tr", "en"])
-
-        entries = []
-        for snippet in transcript_list:
-            entries.append(
-                {
-                    "text": snippet.text,
-                    "start": snippet.start,
-                    "duration": snippet.duration,
-                }
+        if t5_summarizer is not None:
+            # 1. İçeriği kes (Max 200 karakter)
+            text_to_summarize = request.content[:200]
+            
+            loop = asyncio.get_running_loop()
+            
+            # 2. Asenkron Timeout YOK - Güvenli Arka Plan İşlemi
+            summary_output = await loop.run_in_executor(
+                executor, 
+                lambda: t5_summarizer(
+                    text_to_summarize, 
+                    max_length=12, 
+                    min_length=4, 
+                    num_beams=1, 
+                    early_stopping=True, 
+                    do_sample=False
+                )
             )
-
-        logger.info(
-            "Altyazı çekildi — Video: %s | %d parça", video_id, len(entries)
-        )
-        return {"success": True, "data": entries}
-
+            
+            if summary_output and len(summary_output) > 0:
+                gen_text = summary_output[0]['summary_text'].strip()
+                
+                # Aynılık Kontrolü
+                w_gen = set(re.findall(r'\w+', gen_text.lower()))
+                w_orig = set(re.findall(r'\w+', request.title.lower()))
+                
+                if w_gen and w_orig:
+                    overlap = len(w_gen.intersection(w_orig))
+                    similarity = max(overlap / len(w_gen), overlap / len(w_orig))
+                    if similarity <= 0.60 and gen_text != request.title:
+                        final_text = gen_text
+                        
     except Exception as e:
-        logger.warning("Altyazı çekme hatası (video: %s): %s", video_id, e)
-        return {"success": False, "data": [], "error": str(e)}
-
-
-# ── Health Check ─────────────────────────────────────────────────
-@app.get("/health")
-async def health_check():
-    return {"status": "ok", "service": "anchor"}
-
-
-# ── Doğrudan Çalıştırma ─────────────────────────────────────────
-if __name__ == "__main__":
-    import uvicorn
-
-    uvicorn.run(app, host=HOST, port=PORT)
+        print(f"--- T5 MODEL HATASI: {str(e)} ---")
+        
+    summary = f"Başlık abartılı; içerikte aslında şu belirtiliyor: {final_text}"
+    
+    return GenerateReportResponse(
+        contradiction_summary=summary
+    )

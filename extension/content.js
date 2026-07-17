@@ -1,72 +1,151 @@
 /**
- * Anchor — Content Script
- * YouTube sayfalarında çalışır:
- *  1. Video başlığını ve ID'sini yakalar
- *  2. Background script üzerinden backend'e analiz isteği gönderir
- *  3. Sayfaya Anchor halkası ve hover kartı enjekte eder
+ * Anchor — Content Script (News Only)
+ *
+ * Sadece haber sitelerinde çalışır. Başlık ve içeriği analiz edip
+ * sağ alt köşeye Anchor analiz butonunu enjekte eder.
  */
 
 (() => {
   "use strict";
 
-  // ── Sabitler ───────────────────────────────────────────────────
-  const ANCHOR_ATTR = "data-anchor-processed";
-  const DEBOUNCE_MS = 2000;
-  const OBSERVER_THROTTLE_MS = 3000;
-
-  // ── Durum ──────────────────────────────────────────────────────
-  let lastProcessedUrl = "";
-  let processingQueue = new Set();
+  const DEBOUNCE_MS = 1500;
   let observerTimer = null;
 
   // ══════════════════════════════════════════════════════════════
-  //  YOUTUBE MODÜLÜ
+  //  PLATFORM ALGILAMA
   // ══════════════════════════════════════════════════════════════
 
-  /**
-   * YouTube video sayfasından videoId'yi çıkarır.
-   */
-  function getYouTubeVideoId(url) {
-    const urlObj = new URL(url || window.location.href);
-    return urlObj.searchParams.get("v");
+  function detectPlatform() {
+    const hostname = window.location.hostname.toLowerCase();
+    if (
+      hostname.startsWith("chrome") ||
+      hostname.startsWith("about") ||
+      hostname.startsWith("extension") ||
+      hostname === "newtab" ||
+      window.location.protocol === "chrome-extension:" ||
+      window.location.protocol === "chrome:"
+    ) {
+      return null;
+    }
+    
+    // Hata 2: Anasayfada çalışmasını engelle (Sadece detay/alt sayfalarda çalışsın)
+    const path = window.location.pathname;
+    if (path === "/" || path === "/index.html" || path.length <= 5) {
+      return null;
+    }
+
+    // YouTube dahil her yeri artık detay sayfasıysa haber sitesi gibi varsayıyoruz
+    return "news";
   }
 
-  /**
-   * Video izleme sayfasında başlığı yakalar.
-   */
-  function getVideoTitle() {
-    // Birincil seçici (izleme sayfası)
-    const titleEl =
-      document.querySelector(
-        "h1.ytd-watch-metadata yt-formatted-string"
-      ) ||
-      document.querySelector("h1.ytd-video-primary-info-renderer") ||
-      document.querySelector("#title h1 yt-formatted-string") ||
-      document.querySelector("h1.style-scope.ytd-watch-metadata");
+  // ══════════════════════════════════════════════════════════════
+  //  HABER İÇERİĞİ ÇIKARMA
+  // ══════════════════════════════════════════════════════════════
 
-    return titleEl ? titleEl.textContent.trim() : null;
+  function extractNewsContent() {
+    let title = "";
+    const titleEl = document.querySelector("h1, .news-title, .article-title, .news-detail-title, .entry-title");
+    if (titleEl) title = titleEl.textContent.trim();
+    if (!title) title = document.title;
+    if (!title || title.length < 10) return null;
+
+    const selectors = [
+      "article p", ".news-content p", ".article-body p", ".article-detail p",
+      "[role='main'] p", "main p", ".post-content p",
+      ".article-content p", ".entry-content p",
+      ".story-body p", ".content-body p",
+      ".text-content p", ".article__body p", ".article-text p",
+    ];
+    
+    // Hata 1: Çöp içerikleri temizlemek için yardımcı fonksiyon
+    function isBadElement(el) {
+      if (!el) return false;
+      const badSelectors = [
+        "iframe", ".video-js", ".modal", ".ad-container", ".reklam", 
+        "script", "style", "#cookie-consent", ".ad", ".advertisement"
+      ];
+      try {
+        return badSelectors.some(sel => el.closest(sel) !== null);
+      } catch(e) { return false; }
+    }
+
+    let body = "";
+    const art = document.querySelector("article");
+    if (art) {
+      art.querySelectorAll("p").forEach((p) => {
+        if (isBadElement(p)) return;
+        const t = p.textContent.trim();
+        if (t.length > 20) body += t + " ";
+      });
+    }
+    
+    if (body.length < 100) {
+      for (const s of selectors) {
+        document.querySelectorAll(s).forEach((el) => {
+          if (isBadElement(el)) return;
+          const t = el.textContent.trim();
+          if (t.length > 20) body += t + " ";
+        });
+        if (body.length >= 100) break;
+      }
+    }
+    
+    if (body.length < 100) {
+      document.querySelectorAll("p").forEach((p) => {
+        if (isBadElement(p)) return;
+        const t = p.textContent.trim();
+        if (t.length > 30) body += t + " ";
+      });
+    }
+    
+    body = body.trim();
+    if (body.length < 200) return null;
+    
+    return { title, content: body.slice(0, 5000) };
   }
 
   // ══════════════════════════════════════════════════════════════
-  //  ANALİZ İSTEĞİ
+  //  ANALİZ İSTEĞİ (BACKGROUND.JS'E İLETİR)
   // ══════════════════════════════════════════════════════════════
 
-  /**
-   * Background script'e analiz isteği gönderir.
-   */
   function sendAnalyzeRequest(payload) {
     return new Promise((resolve, reject) => {
       chrome.runtime.sendMessage(
         { type: "ANALYZE_REQUEST", payload },
         (response) => {
           if (chrome.runtime.lastError) {
-            reject(new Error(chrome.runtime.lastError.message));
+            reject({ message: chrome.runtime.lastError.message, offline: true });
             return;
           }
           if (response && response.success) {
             resolve(response.data);
           } else {
-            reject(new Error(response?.error || "Bilinmeyen hata"));
+            reject({
+              message: response?.error || "Bilinmeyen hata",
+              offline: response?.offline || false,
+            });
+          }
+        }
+      );
+    });
+  }
+
+  function sendGenerateReportRequest(payload) {
+    return new Promise((resolve, reject) => {
+      chrome.runtime.sendMessage(
+        { type: "GENERATE_REPORT_REQUEST", payload },
+        (response) => {
+          if (chrome.runtime.lastError) {
+            reject({ message: chrome.runtime.lastError.message, offline: true });
+            return;
+          }
+          if (response && response.success) {
+            resolve(response.data);
+          } else {
+            reject({
+              message: response?.error || "Bilinmeyen hata",
+              offline: response?.offline || false,
+            });
           }
         }
       );
@@ -74,22 +153,11 @@
   }
 
   // ══════════════════════════════════════════════════════════════
-  //  UI ENJEKSİYONU — Anchor Halkası
+  //  UI ENJEKSİYONU
   // ══════════════════════════════════════════════════════════════
 
-  /**
-   * Bir DOM elementine Anchor halkası ekler.
-   */
-  function injectAnchorRing(targetEl, status = "loading") {
-    // Zaten eklenmiş mi?
-    if (targetEl.querySelector(".anchor-ring-container")) return null;
-
-    const container = document.createElement("div");
-    container.className = "anchor-ring-container";
-    container.setAttribute("data-status", status);
-
-    // SVG Halka
-    container.innerHTML = `
+  function createRingSVG() {
+    return `
       <svg class="anchor-ring-svg" viewBox="0 0 40 40">
         <circle class="anchor-ring-bg" cx="20" cy="20" r="16"
                 fill="none" stroke-width="3" />
@@ -100,343 +168,194 @@
       </svg>
       <div class="anchor-ring-icon">⚓</div>
     `;
+  }
 
-    // Tıklanabilir hedef alanı güçlendir
-    targetEl.style.position = targetEl.style.position || "relative";
-    targetEl.appendChild(container);
-
+  function injectFixedRing(status = "loading") {
+    const existing = document.querySelector(".anchor-fixed-ring");
+    if (existing) return existing;
+    const container = document.createElement("div");
+    container.className = "anchor-ring-container anchor-fixed-ring";
+    container.setAttribute("data-status", status);
+    container.innerHTML = createRingSVG();
+    document.body.appendChild(container);
     return container;
   }
 
-  /**
-   * Anchor halkasını günceller (renk + doluluk oranı).
-   */
   function updateAnchorRing(container, data) {
     if (!container) return;
-
-    const { clickbait_ratio, status_color } = data;
+    const clickbait_ratio = data?.clickbait_ratio || 0;
+    const status_color = data?.status_color || "green";
+    
     container.setAttribute("data-status", status_color);
-
-    // SVG ilerleme çemberini güncelle
-    const progressCircle = container.querySelector(".anchor-ring-progress");
-    if (progressCircle) {
-      const circumference = 2 * Math.PI * 16; // r=16
-      const offset = circumference * (1 - clickbait_ratio);
-      progressCircle.style.strokeDashoffset = offset;
+    const p = container.querySelector(".anchor-ring-progress");
+    if (p) {
+      const c = 2 * Math.PI * 16;
+      p.style.strokeDasharray = `${c}`;
+      p.style.strokeDashoffset = `${c * (1 - clickbait_ratio)}`;
     }
   }
 
-  // ══════════════════════════════════════════════════════════════
-  //  UI ENJEKSİYONU — Hover Kartı
-  // ══════════════════════════════════════════════════════════════
-
-  /**
-   * Anchor halkasına hover kartı ekler.
-   */
   function attachHoverCard(container, data) {
     if (!container || container.querySelector(".anchor-hover-card")) return;
+    
+    const clickbait_ratio = data?.clickbait_ratio || 0;
+    const status_color = data?.status_color || "green";
+    const contradiction_summary = data?.contradiction_summary || "Veri bulunamadı.";
 
-    const {
-      clickbait_ratio,
-      status_color,
-      honest_title_suggestion,
-      contradiction_summary,
-      user_sentiment_feedback,
-      verified_timestamp,
-    } = data;
-
-    const percentText = Math.round(clickbait_ratio * 100);
-
-    const colorLabels = {
-      green: "Dürüst İçerik",
-      yellow: "Hafif Abartı",
-      orange: "Yanıltıcı",
-      red: "Clickbait",
+    const pct = Math.round(clickbait_ratio * 100);
+    const labels = {
+      green: "Dürüst İçerik", yellow: "Hafif Abartı",
+      orange: "Yanıltıcı", red: "Clickbait",
     };
-
+    
+    let reportClass = data?.needs_report ? "skeleton-text" : "";
+    let reportText = data?.needs_report ? "Yapay zeka analiz ediyor..." : esc(contradiction_summary);
+    
     const card = document.createElement("div");
     card.className = "anchor-hover-card";
     card.setAttribute("data-color", status_color);
-
+    
     card.innerHTML = `
       <div class="anchor-card-header">
         <div class="anchor-card-score" data-color="${status_color}">
-          <span class="anchor-score-number">%${percentText}</span>
-          <span class="anchor-score-label">${colorLabels[status_color] || "Analiz"}</span>
+          <span class="anchor-score-number">%${pct}</span>
+          <span class="anchor-score-label">${labels[status_color] || "Analiz"}</span>
         </div>
         <div class="anchor-card-badge">⚓ Anchor</div>
       </div>
-
       <div class="anchor-card-body">
         <div class="anchor-card-section">
-          <div class="anchor-card-section-title">💡 Dürüst Başlık Önerisi</div>
-          <p class="anchor-card-text anchor-honest-title">"${escapeHtml(honest_title_suggestion)}"</p>
-        </div>
-
-        <div class="anchor-card-section">
           <div class="anchor-card-section-title">📋 Çelişki Raporu</div>
-          <p class="anchor-card-text">${escapeHtml(contradiction_summary)}</p>
+          <p class="anchor-card-text anchor-report-text ${reportClass}">${reportText}</p>
         </div>
-
-        ${
-          verified_timestamp
-            ? `<div class="anchor-card-section">
-                <div class="anchor-card-section-title">⏱️ Doğrulanan Zaman</div>
-                <p class="anchor-card-text anchor-timestamp">[${escapeHtml(verified_timestamp)}]</p>
-              </div>`
-            : ""
-        }
-
-        ${
-          user_sentiment_feedback
-            ? `<div class="anchor-card-section">
-                <div class="anchor-card-section-title">💬 Yorum Analizi</div>
-                <p class="anchor-card-text">${escapeHtml(user_sentiment_feedback)}</p>
-              </div>`
-            : ""
-        }
       </div>
     `;
-
     container.appendChild(card);
   }
 
-  /**
-   * HTML'de güvenli metin gösterimi.
-   */
-  function escapeHtml(text) {
-    const div = document.createElement("div");
-    div.textContent = text || "";
-    return div.innerHTML;
+  function attachOfflineCard(container, errorObj) {
+    if (!container || container.querySelector(".anchor-hover-card")) return;
+    container.setAttribute("data-status", "offline");
+    
+    const errorMsg = errorObj ? (typeof errorObj === "string" ? errorObj : JSON.stringify(errorObj)) : "Bilinmeyen Hata";
+    
+    const card = document.createElement("div");
+    card.className = "anchor-hover-card";
+    card.setAttribute("data-color", "offline");
+    card.innerHTML = `
+      <div class="anchor-card-header">
+        <div class="anchor-card-score" data-color="offline">
+          <span class="anchor-score-number">—</span>
+          <span class="anchor-score-label">Çevrimdışı</span>
+        </div>
+        <div class="anchor-card-badge">⚓ Anchor</div>
+      </div>
+      <div class="anchor-card-body">
+        <div class="anchor-card-section">
+          <p class="anchor-offline-warning">
+            ⚠️ Yerel sunucu aktif değil. Analiz yapılamadı.<br><br>
+            <span style="font-size:10px; color:#999; word-wrap: break-word;">Detay: ${esc(errorMsg)}</span>
+          </p>
+        </div>
+      </div>
+    `;
+    container.appendChild(card);
+  }
+
+  function updateHoverCardWithReport(container, reportResult) {
+    if (!container) return;
+    
+    const reportEl = container.querySelector(".anchor-report-text");
+    if (reportEl) {
+      reportEl.classList.remove("skeleton-text");
+      reportEl.classList.add("fade-in-text");
+      reportEl.innerHTML = esc(reportResult.contradiction_summary);
+    }
+  }
+
+  function esc(text) {
+    const d = document.createElement("div");
+    d.textContent = text || "";
+    return d.innerHTML;
   }
 
   // ══════════════════════════════════════════════════════════════
-  //  ANA YOUTUBE İŞ AKIŞI
+  //  HABER SİTESİ ANA İŞ AKIŞI
   // ══════════════════════════════════════════════════════════════
 
-  /**
-   * YouTube video sayfasını analiz eder.
-   */
-  async function processYouTubeWatchPage() {
-    const videoId = getYouTubeVideoId();
-    if (!videoId) return;
+  async function processNewsPage() {
+    const data = extractNewsContent();
+    if (!data) return;
 
-    const currentUrl = window.location.href;
-    if (currentUrl === lastProcessedUrl) return;
-    if (processingQueue.has(videoId)) return;
-
-    lastProcessedUrl = currentUrl;
-    processingQueue.add(videoId);
-
-    const title = getVideoTitle();
-    if (!title) {
-      processingQueue.delete(videoId);
-      return;
-    }
-
-    // Halka enjeksiyonu için hedef element
-    const titleContainer =
-      document.querySelector("#above-the-fold #title") ||
-      document.querySelector("h1.ytd-watch-metadata");
-
-    let ringContainer = null;
-    if (titleContainer) {
-      ringContainer = injectAnchorRing(titleContainer, "loading");
-    }
+    // Anchor halkasını ekrana sabitle
+    const ring = injectFixedRing("loading");
 
     try {
-      // Backend'e analiz isteği gönder
       const payload = {
-        platform: "youtube",
-        url: `https://www.youtube.com/watch?v=${videoId}`,
-        title: title,
-        content: [], // Altyazı backend tarafında çekilecek veya content script'ten
-        comments: [],
+        platform: "news",
+        url: window.location.href,
+        title: data.title,
+        content: data.content,
       };
 
-      // Altyazıyı backend'den çekmek yerine, burada boş gönderiyoruz
-      // Backend altyazı çekme özelliği ayrıca eklenecek
-      // Şimdilik sayfadan altyazı çekmeyi deneyelim
-      const transcriptData = await extractYouTubeTranscript(videoId);
-      if (transcriptData && transcriptData.length > 0) {
-        payload.content = transcriptData;
-      }
-
-      // Yorumları çekmeyi dene
-      const comments = extractYouTubeComments();
-      if (comments.length > 0) {
-        payload.comments = comments;
-      }
-
       const result = await sendAnalyzeRequest(payload);
-
-      // UI'ı güncelle
-      if (ringContainer) {
-        updateAnchorRing(ringContainer, result);
-        attachHoverCard(ringContainer, result);
+      
+      updateAnchorRing(ring, result);
+      attachHoverCard(ring, result);
+      
+      // Aşama 2: T5'i tetikle ve Skeleton'ı doldur
+      if (result.needs_report) {
+        sendGenerateReportRequest({ title: payload.title, content: payload.content })
+          .then((reportResult) => {
+            updateHoverCardWithReport(ring, reportResult);
+          })
+          .catch((err) => {
+            console.error("[Anchor UI Error] T5 Lazy Loading hatası:", err);
+            updateHoverCardWithReport(ring, {
+              contradiction_summary: "Arka plan analizi başarısız oldu."
+            });
+          });
       }
+      
     } catch (err) {
-      console.error("[Anchor] Analiz hatası:", err);
-      if (ringContainer) {
-        ringContainer.setAttribute("data-status", "error");
+      console.error("[Anchor UI Error] Haber analizi hatası:", JSON.stringify(err));
+      if (err.offline && !String(err.message).includes("JSON")) {
+        attachOfflineCard(ring, err);
+      } else {
+        ring.setAttribute("data-status", "error");
       }
-    } finally {
-      processingQueue.delete(videoId);
     }
   }
 
-  /**
-   * YouTube altyazı verilerini sayfadan çıkarmaya çalışır.
-   * Not: Bu yöntem her zaman çalışmayabilir, backend'de de
-   * youtube-transcript-api ile yedek çekim yapılabilir.
-   */
-  async function extractYouTubeTranscript(videoId) {
-    try {
-      // Backend'den altyazı çek (youtube-transcript-api kullanarak)
-      const response = await new Promise((resolve, reject) => {
-        chrome.runtime.sendMessage(
-          {
-            type: "FETCH_TRANSCRIPT",
-            videoId: videoId,
-          },
-          (resp) => {
-            if (chrome.runtime.lastError) {
-              reject(new Error(chrome.runtime.lastError.message));
-              return;
-            }
-            resolve(resp);
-          }
-        );
-      });
-
-      if (response && response.success && response.data) {
-        return response.data;
-      }
-    } catch (e) {
-      console.warn("[Anchor] Altyazı çekme başarısız:", e);
-    }
-    return [];
-  }
-
-  /**
-   * Sayfadaki YouTube yorumlarını çıkarır.
-   */
-  function extractYouTubeComments() {
-    const commentEls = document.querySelectorAll(
-      "#content-text.ytd-comment-renderer"
-    );
-    const comments = [];
-    commentEls.forEach((el, i) => {
-      if (i < 10) {
-        const text = el.textContent.trim();
-        if (text) comments.push(text);
-      }
-    });
-    return comments;
-  }
-
   // ══════════════════════════════════════════════════════════════
-  //  THUMBNAIL HALKALARI (Ana Sayfa / Arama Sonuçları)
+  //  INIT & MUTATION OBSERVER
   // ══════════════════════════════════════════════════════════════
 
-  /**
-   * YouTube ana sayfasındaki video kartlarına halka ekler.
-   * Not: Ana sayfa analizleri daha sınırlıdır (altyazı yok).
-   */
-  function processYouTubeThumbnails() {
-    const thumbnails = document.querySelectorAll(
-      "ytd-rich-item-renderer, ytd-video-renderer, ytd-compact-video-renderer"
-    );
+  function run() {
+    const p = detectPlatform();
+    if (!p) return;
 
-    thumbnails.forEach((item) => {
-      if (item.hasAttribute(ANCHOR_ATTR)) return;
-      item.setAttribute(ANCHOR_ATTR, "true");
-
-      const thumbnailEl = item.querySelector("#thumbnail");
-      if (!thumbnailEl) return;
-
-      // Küçük bir halka ekle (henüz analiz edilmemiş durumda)
-      const ring = injectAnchorRing(thumbnailEl, "idle");
-      if (ring) {
-        ring.classList.add("anchor-ring-thumbnail");
-      }
-    });
-  }
-
-  // ══════════════════════════════════════════════════════════════
-  //  SAYFA GÖZLEMCİSİ (MutationObserver)
-  // ══════════════════════════════════════════════════════════════
-
-  function initObserver() {
+    // Herhangi bir DOM değişiminde haberi tekrar tara
     const observer = new MutationObserver(() => {
-      // Throttle
-      if (observerTimer) return;
+      clearTimeout(observerTimer);
       observerTimer = setTimeout(() => {
-        observerTimer = null;
-
-        // Sayfa türüne göre işlem
-        if (window.location.pathname === "/watch") {
-          processYouTubeWatchPage();
+        if (!document.querySelector(".anchor-fixed-ring")) {
+          processNewsPage();
         }
-        // Ana sayfada thumbnail halkalarını ekle
-        processYouTubeThumbnails();
-      }, OBSERVER_THROTTLE_MS);
+      }, DEBOUNCE_MS);
     });
 
-    observer.observe(document.body, {
-      childList: true,
-      subtree: true,
-    });
+    observer.observe(document.body, { childList: true, subtree: true });
+    
+    // İlk tarama
+    setTimeout(processNewsPage, 1000);
   }
 
-  // ══════════════════════════════════════════════════════════════
-  //  BAŞLATMA
-  // ══════════════════════════════════════════════════════════════
-
-  function init() {
-    console.log("[Anchor] ⚓ Content script yüklendi.");
-
-    // YouTube SPA navigasyonunu dinle
-    let currentPath = window.location.href;
-
-    // İlk yükleme
-    setTimeout(() => {
-      if (window.location.pathname === "/watch") {
-        processYouTubeWatchPage();
-      }
-      processYouTubeThumbnails();
-    }, DEBOUNCE_MS);
-
-    // SPA navigasyonu (YouTube History API kullanır)
-    const originalPushState = history.pushState;
-    history.pushState = function (...args) {
-      originalPushState.apply(this, args);
-      handleNavigation();
-    };
-
-    window.addEventListener("popstate", handleNavigation);
-
-    function handleNavigation() {
-      const newUrl = window.location.href;
-      if (newUrl !== currentPath) {
-        currentPath = newUrl;
-        setTimeout(() => {
-          if (window.location.pathname === "/watch") {
-            processYouTubeWatchPage();
-          }
-          processYouTubeThumbnails();
-        }, DEBOUNCE_MS);
-      }
-    }
-
-    // DOM değişikliklerini izle
-    initObserver();
-  }
-
-  // Sayfa hazır olduğunda başlat
+  // Sadece tam yüklendiğinde çalış
   if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", init);
+    document.addEventListener("DOMContentLoaded", run);
   } else {
-    init();
+    run();
   }
+
 })();

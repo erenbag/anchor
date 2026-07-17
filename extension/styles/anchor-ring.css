@@ -1,6 +1,8 @@
 /*
- * Anchor — Halka & Hover Kartı Stilleri
+ * Anchor — Halka & Hover Kartı Stilleri  (v1.3)
  * Premium glassmorphism tasarım, dinamik renk animasyonları
+ *
+ * v1.3: "awaiting" durumu, yorum analiz butonu, dinamik durum mesajları
  */
 
 /* ═══════════════════════════════════════════════════════════════
@@ -20,8 +22,11 @@
   --anchor-orange-glow: rgba(249, 115, 22, 0.4);
   --anchor-red: #ef4444;
   --anchor-red-glow: rgba(239, 68, 68, 0.4);
-  --anchor-loading: #94a3b8;
-  --anchor-card-bg: rgba(15, 15, 20, 0.88);
+  --anchor-loading: #60a5fa;
+  --anchor-awaiting: #fb923c;
+  --anchor-awaiting-glow: rgba(251, 146, 60, 0.35);
+  --anchor-offline: #64748b;
+  --anchor-card-bg: rgba(15, 15, 20, 0.92);
   --anchor-card-border: rgba(255, 255, 255, 0.08);
   --anchor-text-primary: #f1f5f9;
   --anchor-text-secondary: #94a3b8;
@@ -45,6 +50,57 @@
 
 .anchor-ring-container:hover {
   transform: scale(1.15);
+}
+
+/* ── YouTube Player Kontrol Barı İçi Buton ──────────────────── */
+.anchor-player-button {
+  position: relative !important;
+  top: auto !important;
+  right: auto !important;
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  vertical-align: middle;
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0 4px;
+  cursor: pointer;
+  opacity: 0.9;
+  transition: opacity 0.2s ease, transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+  filter: drop-shadow(0 1px 4px rgba(0, 0, 0, 0.4));
+  z-index: 70;
+}
+
+.anchor-player-button:hover {
+  opacity: 1;
+  transform: scale(1.18);
+}
+
+/* ── Haber Sitesi Sabit Konum Halkası ───────────────────────── */
+.anchor-fixed-ring {
+  position: fixed !important;
+  bottom: 24px;
+  right: 24px;
+  top: auto !important;
+  width: 48px;
+  height: 48px;
+  z-index: 2147483647;
+  border-radius: 50%;
+  background: rgba(15, 15, 20, 0.7);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  padding: 6px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+  transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1),
+    box-shadow 0.25s ease;
+}
+
+.anchor-fixed-ring:hover {
+  transform: scale(1.12);
+  box-shadow: 0 6px 28px rgba(0, 0, 0, 0.5);
 }
 
 /* Thumbnail üzerindeki küçük halka */
@@ -87,95 +143,133 @@
   font-size: 11px;
 }
 
+.anchor-player-button .anchor-ring-icon {
+  font-size: 13px;
+}
+
+.anchor-fixed-ring .anchor-ring-icon {
+  font-size: 18px;
+}
+
 /* ═══════════════════════════════════════════════════════════════
    RENK DURUMLARI
    ═══════════════════════════════════════════════════════════════ */
 
-/* ── Loading ────────────────────────────────────────────────── */
+/* ── Loading — Kesintisiz 360° dönen animasyon ─────────────── */
+[data-status="loading"] .anchor-ring-svg {
+  animation: anchor-ring-rotate 1.4s linear infinite;
+}
+
 [data-status="loading"] .anchor-ring-progress {
   stroke: var(--anchor-loading);
-  animation: anchor-spin 1.5s linear infinite;
+  stroke-dasharray: 70.37 30.16;
+  stroke-dashoffset: 0;
 }
 
 [data-status="loading"] .anchor-ring-bg {
-  stroke: rgba(148, 163, 184, 0.2);
+  stroke: rgba(96, 165, 250, 0.15);
 }
 
-@keyframes anchor-spin {
-  0% {
-    stroke-dashoffset: 100.53;
-  }
-  50% {
-    stroke-dashoffset: 25;
-  }
-  100% {
-    stroke-dashoffset: 100.53;
-  }
+@keyframes anchor-ring-rotate {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+/* ── Awaiting — Altyazı yok, yorum analizi bekliyor ─────────── */
+[data-status="awaiting"] .anchor-ring-progress {
+  stroke: var(--anchor-awaiting);
+  stroke-dasharray: 100.53;
+  stroke-dashoffset: 0;
+}
+
+[data-status="awaiting"] .anchor-ring-bg {
+  stroke: rgba(251, 146, 60, 0.15);
+}
+
+[data-status="awaiting"] {
+  filter: drop-shadow(0 0 10px var(--anchor-awaiting-glow));
+  animation: anchor-pulse-awaiting 2.5s ease-in-out infinite;
+}
+
+@keyframes anchor-pulse-awaiting {
+  0%, 100% { filter: drop-shadow(0 0 8px var(--anchor-awaiting-glow)); }
+  50%      { filter: drop-shadow(0 0 18px var(--anchor-awaiting-glow)); }
+}
+
+/* ── Collecting — Yorumlar okunuyor (mini loading) ──────────── */
+[data-status="collecting"] .anchor-ring-svg {
+  animation: anchor-ring-rotate 1.0s linear infinite;
+}
+
+[data-status="collecting"] .anchor-ring-progress {
+  stroke: var(--anchor-awaiting);
+  stroke-dasharray: 50.27 50.26;
+  stroke-dashoffset: 0;
+}
+
+[data-status="collecting"] .anchor-ring-bg {
+  stroke: rgba(251, 146, 60, 0.12);
 }
 
 /* ── Idle (henüz analiz edilmemiş) ──────────────────────────── */
 [data-status="idle"] .anchor-ring-progress {
-  stroke: var(--anchor-loading);
+  stroke: var(--anchor-offline);
+  stroke-dasharray: 100.53;
   stroke-dashoffset: 100.53;
   opacity: 0.5;
 }
 
-/* ── Green (Dürüst) ─────────────────────────────────────────── */
-[data-status="green"] .anchor-ring-progress {
-  stroke: var(--anchor-green);
+/* ── Offline (sunucu aktif değil) ───────────────────────────── */
+[data-status="offline"] .anchor-ring-progress {
+  stroke: var(--anchor-offline);
+  stroke-dasharray: 100.53;
+  stroke-dashoffset: 0;
+  opacity: 0.6;
 }
 
-[data-status="green"] {
-  filter: drop-shadow(0 0 8px var(--anchor-green-glow));
+[data-status="offline"] .anchor-ring-bg {
+  stroke: rgba(100, 116, 139, 0.15);
 }
+
+[data-status="offline"] {
+  filter: drop-shadow(0 2px 6px rgba(100, 116, 139, 0.2)) grayscale(0.3);
+}
+
+[data-status="offline"] .anchor-ring-icon {
+  opacity: 0.5;
+}
+
+/* ── Green (Dürüst) ─────────────────────────────────────────── */
+[data-status="green"] .anchor-ring-progress { stroke: var(--anchor-green); }
+[data-status="green"] { filter: drop-shadow(0 0 8px var(--anchor-green-glow)); }
 
 /* ── Yellow (Hafif Abartı) ──────────────────────────────────── */
-[data-status="yellow"] .anchor-ring-progress {
-  stroke: var(--anchor-yellow);
-}
-
-[data-status="yellow"] {
-  filter: drop-shadow(0 0 8px var(--anchor-yellow-glow));
-}
+[data-status="yellow"] .anchor-ring-progress { stroke: var(--anchor-yellow); }
+[data-status="yellow"] { filter: drop-shadow(0 0 8px var(--anchor-yellow-glow)); }
 
 /* ── Orange (Yanıltıcı) ─────────────────────────────────────── */
-[data-status="orange"] .anchor-ring-progress {
-  stroke: var(--anchor-orange);
-}
-
-[data-status="orange"] {
-  filter: drop-shadow(0 0 8px var(--anchor-orange-glow));
-}
+[data-status="orange"] .anchor-ring-progress { stroke: var(--anchor-orange); }
+[data-status="orange"] { filter: drop-shadow(0 0 8px var(--anchor-orange-glow)); }
 
 /* ── Red (Clickbait) ─────────────────────────────────────────── */
-[data-status="red"] .anchor-ring-progress {
-  stroke: var(--anchor-red);
-}
-
+[data-status="red"] .anchor-ring-progress { stroke: var(--anchor-red); }
 [data-status="red"] {
   filter: drop-shadow(0 0 8px var(--anchor-red-glow));
   animation: anchor-pulse-red 2s ease-in-out infinite;
 }
 
 @keyframes anchor-pulse-red {
-  0%,
-  100% {
-    filter: drop-shadow(0 0 8px var(--anchor-red-glow));
-  }
-  50% {
-    filter: drop-shadow(0 0 16px var(--anchor-red-glow));
-  }
+  0%, 100% { filter: drop-shadow(0 0 8px var(--anchor-red-glow)); }
+  50%      { filter: drop-shadow(0 0 16px var(--anchor-red-glow)); }
 }
 
 /* ── Error ───────────────────────────────────────────────────── */
 [data-status="error"] .anchor-ring-progress {
   stroke: #475569;
+  stroke-dasharray: 100.53;
   stroke-dashoffset: 0;
 }
-
-[data-status="error"] .anchor-ring-icon {
-  content: "⚠️";
-}
+[data-status="error"] .anchor-ring-icon { opacity: 0.4; }
 
 /* ═══════════════════════════════════════════════════════════════
    HOVER KARTI — Glassmorphism Bilgi Kutusu
@@ -198,7 +292,6 @@
   z-index: 10000;
   overflow: hidden;
 
-  /* Giriş animasyonu */
   opacity: 0;
   transform: translateY(-8px) scale(0.96);
   pointer-events: none;
@@ -206,7 +299,48 @@
     transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-/* Hover'da kartı göster */
+/* Hover Köprüsü (Kart ile halka arasındaki boşluğu kapatır) */
+.anchor-ring-container::after,
+.anchor-player-button::after,
+.anchor-fixed-ring::after {
+  content: "";
+  position: absolute;
+  top: -40px;
+  bottom: -40px;
+  left: -40px;
+  right: -40px;
+  z-index: -1;
+}
+
+/* Oynatıcı kontrol barından YUKARIYA açılan hover kartı */
+.anchor-player-button .anchor-hover-card {
+  top: auto;
+  bottom: calc(100% + 14px);
+  right: -40px;
+  transform: translateY(8px) scale(0.96);
+}
+
+.anchor-player-button:hover .anchor-hover-card {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
+}
+
+/* Sabit konum halkası — YUKARIYA açılan hover kartı */
+.anchor-fixed-ring .anchor-hover-card {
+  top: auto;
+  bottom: calc(100% + 14px);
+  right: 0;
+  transform: translateY(8px) scale(0.96);
+}
+
+.anchor-fixed-ring:hover .anchor-hover-card {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
+}
+
+/* Hover'da kartı göster — genel */
 .anchor-ring-container:hover .anchor-hover-card {
   opacity: 1;
   transform: translateY(0) scale(1);
@@ -242,20 +376,6 @@
   color: var(--anchor-text-secondary);
 }
 
-/* Skor renkleri */
-.anchor-card-score[data-color="green"] .anchor-score-number {
-  color: var(--anchor-green);
-}
-.anchor-card-score[data-color="yellow"] .anchor-score-number {
-  color: var(--anchor-yellow);
-}
-.anchor-card-score[data-color="orange"] .anchor-score-number {
-  color: var(--anchor-orange);
-}
-.anchor-card-score[data-color="red"] .anchor-score-number {
-  color: var(--anchor-red);
-}
-
 .anchor-card-badge {
   font-size: 11px;
   font-weight: 600;
@@ -265,6 +385,14 @@
   color: var(--anchor-text-secondary);
   letter-spacing: 0.3px;
 }
+
+/* Skor renkleri */
+.anchor-card-score[data-color="green"] .anchor-score-number   { color: var(--anchor-green); }
+.anchor-card-score[data-color="yellow"] .anchor-score-number  { color: var(--anchor-yellow); }
+.anchor-card-score[data-color="orange"] .anchor-score-number  { color: var(--anchor-orange); }
+.anchor-card-score[data-color="red"] .anchor-score-number     { color: var(--anchor-red); }
+.anchor-card-score[data-color="offline"] .anchor-score-number { color: var(--anchor-offline); }
+.anchor-card-score[data-color="awaiting"] .anchor-score-number { color: var(--anchor-awaiting); }
 
 /* ── Kart Gövdesi ───────────────────────────────────────────── */
 .anchor-card-body {
@@ -315,6 +443,148 @@
   width: fit-content;
 }
 
+/* Offline uyarı mesajı */
+.anchor-offline-warning {
+  font-size: 12px;
+  line-height: 1.5;
+  color: #f59e0b;
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px solid rgba(245, 158, 11, 0.15);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.anchor-offline-warning code {
+  display: inline-block;
+  background: rgba(255, 255, 255, 0.08);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-family: "JetBrains Mono", "Fira Code", monospace;
+  color: #fbbf24;
+  margin-top: 4px;
+}
+
+/* ── Awaiting Bilgi Mesajı ──────────────────────────────────── */
+.anchor-awaiting-message {
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--anchor-text-primary);
+  background: rgba(251, 146, 60, 0.06);
+  border: 1px solid rgba(251, 146, 60, 0.12);
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   YORUM ANALİZİ BUTONU — Premium Stil
+   ═══════════════════════════════════════════════════════════════ */
+.anchor-comment-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 11px 16px;
+  border: none;
+  border-radius: 10px;
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  cursor: pointer;
+  color: #fff;
+  background: linear-gradient(135deg, #f97316 0%, #fb923c 50%, #f59e0b 100%);
+  background-size: 200% 200%;
+  box-shadow: 0 4px 14px rgba(249, 115, 22, 0.3),
+    0 0 0 1px rgba(255, 255, 255, 0.06) inset;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  position: relative;
+  overflow: hidden;
+}
+
+.anchor-comment-btn::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.15),
+    transparent
+  );
+  transition: left 0.5s ease;
+}
+
+.anchor-comment-btn:hover {
+  background-position: 100% 0;
+  box-shadow: 0 6px 20px rgba(249, 115, 22, 0.45),
+    0 0 0 1px rgba(255, 255, 255, 0.1) inset;
+  transform: translateY(-1px);
+}
+
+.anchor-comment-btn:hover::before {
+  left: 100%;
+}
+
+.anchor-comment-btn:active {
+  transform: translateY(0) scale(0.98);
+  box-shadow: 0 2px 8px rgba(249, 115, 22, 0.25);
+}
+
+.anchor-comment-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+  background: rgba(100, 116, 139, 0.3);
+  color: var(--anchor-text-secondary);
+}
+
+.anchor-comment-btn-icon {
+  font-size: 15px;
+  line-height: 1;
+}
+
+/* ── Dinamik Durum Mesajı ───────────────────────────────────── */
+.anchor-status-msg {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--anchor-awaiting);
+  text-align: center;
+  padding: 6px 0 0;
+  min-height: 20px;
+  transition: opacity 0.3s ease;
+}
+
+.anchor-status-msg[data-state="collecting"] {
+  color: var(--anchor-awaiting);
+  animation: anchor-status-blink 1.2s ease-in-out infinite;
+}
+
+.anchor-status-msg[data-state="analyzing"] {
+  color: var(--anchor-loading);
+  animation: anchor-status-blink 1.2s ease-in-out infinite;
+}
+
+.anchor-status-msg[data-state="done"] {
+  color: var(--anchor-green);
+  animation: none;
+}
+
+.anchor-status-msg[data-state="error"] {
+  color: var(--anchor-red);
+  animation: none;
+}
+
+@keyframes anchor-status-blink {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.5; }
+}
+
 /* ── Kart Renk Aksan Çizgisi (üst kenar) ───────────────────── */
 .anchor-hover-card::before {
   content: "";
@@ -325,18 +595,12 @@
   height: 3px;
 }
 
-.anchor-hover-card[data-color="green"]::before {
-  background: linear-gradient(90deg, var(--anchor-green), #4ade80);
-}
-.anchor-hover-card[data-color="yellow"]::before {
-  background: linear-gradient(90deg, var(--anchor-yellow), #facc15);
-}
-.anchor-hover-card[data-color="orange"]::before {
-  background: linear-gradient(90deg, var(--anchor-orange), #fb923c);
-}
-.anchor-hover-card[data-color="red"]::before {
-  background: linear-gradient(90deg, var(--anchor-red), #f87171);
-}
+.anchor-hover-card[data-color="green"]::before    { background: linear-gradient(90deg, var(--anchor-green), #4ade80); }
+.anchor-hover-card[data-color="yellow"]::before   { background: linear-gradient(90deg, var(--anchor-yellow), #facc15); }
+.anchor-hover-card[data-color="orange"]::before   { background: linear-gradient(90deg, var(--anchor-orange), #fb923c); }
+.anchor-hover-card[data-color="red"]::before      { background: linear-gradient(90deg, var(--anchor-red), #f87171); }
+.anchor-hover-card[data-color="offline"]::before  { background: linear-gradient(90deg, var(--anchor-offline), #94a3b8); }
+.anchor-hover-card[data-color="awaiting"]::before { background: linear-gradient(90deg, #f97316, #fbbf24); }
 
 /* ═══════════════════════════════════════════════════════════════
    RESPONSIVE — Mobil uyumluluk
@@ -350,4 +614,40 @@
   .anchor-score-number {
     font-size: 22px;
   }
+
+  .anchor-fixed-ring {
+    width: 40px;
+    height: 40px;
+    bottom: 16px;
+    right: 16px;
+    padding: 4px;
+  }
 }
+
+/* ===============================================================
+   LAZY LOADING EFEKTLER  (Skeleton & Fade-in)
+   =============================================================== */
+
+.skeleton-text {
+  color: transparent !important;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.05) 25%, rgba(255, 255, 255, 0.15) 50%, rgba(255, 255, 255, 0.05) 75%);
+  background-size: 200% 100%;
+  animation: skeleton-loading 1.5s infinite linear;
+  border-radius: 4px;
+  user-select: none;
+}
+
+@keyframes skeleton-loading {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+.fade-in-text {
+  animation: fade-in-anim 0.8s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+@keyframes fade-in-anim {
+  from { opacity: 0; transform: translateY(5px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+

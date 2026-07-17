@@ -7,6 +7,15 @@ document.addEventListener("DOMContentLoaded", async () => {
   const statusDot = document.getElementById("statusDot");
   const statusText = document.getElementById("statusText");
   const pageUrl = document.getElementById("pageUrl");
+  const popupVersion = document.getElementById("popupVersion");
+
+  // Dinamik Versiyon Numarası
+  if (popupVersion && chrome.runtime.getManifest) {
+    const manifest = chrome.runtime.getManifest();
+    if (manifest && manifest.version) {
+      popupVersion.textContent = "v" + manifest.version;
+    }
+  }
 
   // ── Backend Sağlık Kontrolü ────────────────────────────────────
   try {
@@ -28,6 +37,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       statusText.textContent = "Backend sunucusu yanıt vermiyor";
     }
   } catch (err) {
+    console.error("[Anchor UI Error] Popup backend kontrolü:", err);
     statusDot.classList.add("offline");
     statusText.textContent = "Backend'e bağlanılamadı";
   }

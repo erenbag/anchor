@@ -9,8 +9,7 @@ load_dotenv(os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env"))
 
 # ─── Model Ayarları ───────────────────────────────────────────────
 NLI_MODEL_NAME = "MoritzLaurer/mDeBERTa-v3-base-xnli-multilingual-nli-2mil7"
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-GEMINI_MODEL_NAME = "gemini-2.0-flash"
+GENERATIVE_MODEL_NAME = "Qwen/Qwen2.5-1.5B-Instruct"
 
 # ─── Zaman Damgalı Bölümleme ─────────────────────────────────────
 SEGMENT_DURATION_SECONDS = 120  # 2 dakikalık bloklar

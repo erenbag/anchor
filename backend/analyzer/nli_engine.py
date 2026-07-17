@@ -85,7 +85,7 @@ class NLIEngine:
         # candidate_labels olarak başlığı veriyoruz,
         # bu sayede model başlık ile içerik arasındaki ilişkiyi değerlendirir.
         result = self._pipe(
-            sequences=premise[:2048],  # Modelin max token sınırına uygun kırp
+            sequences=premise[:500],  # Modelin çok hızlı (0.1s) dönmesi için 2048 yerine ilk 500 karakterle sınırla
             candidate_labels=[hypothesis],
             multi_label=False,
         )
@@ -139,6 +139,26 @@ class NLIEngine:
             )
 
         return results
+
+    def calculate_clickbait_score(self, title: str, content: str) -> dict:
+        """
+        Sadece haberler için: Başlık ve içerik arasındaki çelişkiyi (clickbait oranı) hesaplar.
+        """
+        nli_result = self.analyze_nli(premise=content, hypothesis=title)
+        ratio = nli_result["contradiction_score"]
+        
+        # Basit özet
+        if ratio > 0.6:
+            summary = "Haberin başlığı ile içeriği büyük ölçüde çelişiyor. (Clickbait ihtimali çok yüksek)"
+        elif ratio > 0.3:
+            summary = "Haberin başlığında içerikte bulunmayan abartılı ifadeler olabilir."
+        else:
+            summary = "Başlık içerikle uyumlu, yanıltıcı bir durum tespit edilmedi."
+            
+        return {
+            "clickbait_ratio": ratio,
+            "contradiction_summary": summary
+        }
 
 
 # Singleton instance
